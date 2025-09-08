@@ -13,16 +13,13 @@ then re-import/merge edits back into the JSONL (simple manual process).
 """
 import argparse
 import csv
-import json
+import sys
 from pathlib import Path
 
-def load_jsonl(path: Path):
-    items = []
-    with path.open("r", encoding="utf-8") as fh:
-        for line in fh:
-            if line.strip():
-                items.append(json.loads(line))
-    return items
+# Add src to Python path for imports
+sys.path.insert(0, str(Path(__file__).parent / "src"))
+
+from llm_fine_tune.utils import load_jsonl
 
 def main():
     parser = argparse.ArgumentParser()
