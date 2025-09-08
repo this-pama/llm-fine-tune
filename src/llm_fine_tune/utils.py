@@ -6,7 +6,7 @@ Utility functions for LLM fine-tuning data preparation and text processing.
 import json
 import re
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Union
+from typing import List, Dict, Any, Optional
 
 
 def chunk_text(text: str, max_chars: int = 2000, overlap: int = 200) -> List[str]:

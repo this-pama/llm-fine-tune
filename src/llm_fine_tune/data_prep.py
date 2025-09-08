@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Union
 
 # Import utilities from package
-from .utils import chunk_text, clean_text, strip_html, load_jsonl, write_jsonl
+from .utils import chunk_text, clean_text, strip_html, write_jsonl
 
 # Set CSV field size limit
 try:

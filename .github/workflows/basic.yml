@@ -1,0 +1,101 @@
+name: Basic CI
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.9, 3.11]
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8 pytest
+        # Install minimal dependencies for testing (avoid heavy ML libs in CI)
+        pip install beautifulsoup4 pandas python-dotenv
+    
+    - name: Lint with flake8
+      run: |
+        # Stop the build if there are Python syntax errors or undefined names
+        flake8 src/ --count --select=E9,F63,F7,F82 --show-source --statistics
+        # Exit-zero treats all errors as warnings. Line length relaxed to 88 chars
+        flake8 src/ --count --exit-zero --max-complexity=10 --max-line-length=88 --statistics
+    
+    - name: Run pytest
+      run: |
+        # Set Python path and run tests
+        export PYTHONPATH=src:$PYTHONPATH
+        python -m pytest tests/ -v --tb=short
+    
+    - name: Test data preparation script
+      run: |
+        export PYTHONPATH=src:$PYTHONPATH
+        # Test that the main scripts can be imported
+        python -c "import sys; sys.path.insert(0, 'src'); from llm_fine_tune.data_prep import main; print('data_prep import OK')"
+        python -c "import sys; sys.path.insert(0, 'src'); from llm_fine_tune.generate import main; print('generate import OK')"
+
+  check-large-files:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Check for large files
+      run: |
+        echo "Checking for files larger than 5MB..."
+        large_files=$(find . -type f -size +5M -not -path "./.git/*" || true)
+        if [ -n "$large_files" ]; then
+          echo "Error: Large files found in repository:"
+          echo "$large_files"
+          echo "Please use Git LFS or external storage for large files."
+          exit 1
+        else
+          echo "No large files found. ✓"
+        fi
+    
+    - name: Check for common data file patterns
+      run: |
+        echo "Checking for data files that should be ignored..."
+        data_files=$(find . -name "*.csv" -o -name "*.jsonl" | grep -v "data/sample_sft_small.jsonl" || true)
+        if [ -n "$data_files" ]; then
+          echo "Warning: Data files found (should be in .gitignore):"
+          echo "$data_files"
+          # Don't fail for this, just warn
+        else
+          echo "No unexpected data files found. ✓"
+        fi
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Build Docker image
+      run: |
+        docker build -t llm-fine-tune-test .
+    
+    - name: Test Docker container
+      run: |
+        # Run a quick test in the container
+        docker run --rm llm-fine-tune-test python -c "import sys; sys.path.insert(0, 'src'); from llm_fine_tune.utils import chunk_text; print('Docker test OK')"
