@@ -13,9 +13,15 @@ data/archive/*
 output_models/
 checkpoints/
 offload_folder/
+*.pt
+*.bin
+*.ckpt
 
 # System files
 .DS_Store
+
+# Notebooks
+*.ipynb
 
 # Model adapters
 /lora_adapter
