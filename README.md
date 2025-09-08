@@ -10,6 +10,20 @@ A toolkit for preparing data, generating synthetic outputs, and fine-tuning lang
 - **Fine-tuning**: Train LoRA adapters on large language models
 - **Testing & CI**: Comprehensive test suite and GitHub Actions workflows
 
+## What was removed
+
+This repository was recently cleaned up to remove obsolete files and improve maintainability. The following files were removed from HEAD (git history preserved):
+
+**System files:**
+- `.DS_Store` - macOS system file
+
+**Legacy documentation and scripts:**
+- `README_old.md` - Outdated documentation
+- `data_prep_old.py` - Legacy data preparation script (superseded by src/llm_fine_tune/data_prep.py)
+- `generate_with_olama_old.py` - Legacy generation script (superseded by src/llm_fine_tune/generate.py)
+
+**Note:** All files remain accessible in git history and can be recovered if needed. The cleanup only affects the current HEAD commit to reduce repository size and confusion.
+
 ## Quick Local Test
 
 Get started quickly with the included sample dataset:
@@ -27,21 +41,21 @@ pip install transformers torch
 ### Option 1: Test with HuggingFace Fallback (No Ollama Required)
 
 ```bash
-# 1. Test data preparation with sample
-python data_prep.py --input_dir data --output test_output.jsonl --max_chars 1000
+# 1. Export sample dataset for review
+python export_for_review.py --input data/sample_sft_small.jsonl --output sample_review.csv
 
-# 2. Generate synthetic outputs using HuggingFace fallback (gpt2)
-python generate_with_olama.py \
-    --input data/sample_sft_small.jsonl \
-    --output test_generated.jsonl \
-    --use_hf_fallback \
-    --max_gen 3
-
-# 3. Export for review
-python export_for_review.py --input test_generated.jsonl --output test_review.csv
-
-# 4. Run tests
+# 2. Run the test suite to verify everything works
 pytest tests/ -v
+
+# 3. Test data preparation with your own documents (if you have any in data_inputs/)
+# python data_prep.py --input_dir data_inputs --output new_dataset.jsonl --max_chars 1000
+
+# 4. For generation testing, create a dataset with empty outputs first:
+# python generate_with_olama.py \
+#     --input your_dataset.jsonl \
+#     --output generated_dataset.jsonl \
+#     --use_hf_fallback \
+#     --max_gen 3
 ```
 
 ### Option 2: Test with Ollama (Requires Ollama Installation)
