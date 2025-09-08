@@ -17,9 +17,15 @@ which will perform the safe CPU resize when needed.
 import os
 import argparse
 import json
+import sys
 from pathlib import Path
 from dataclasses import dataclass
 from typing import List
+
+# Add src to Python path for imports
+sys.path.insert(0, str(Path(__file__).parent / "src"))
+
+from llm_fine_tune.utils import load_jsonl
 
 # It's OK to set the env var here to enable CPU fallback for MPS when needed.
 # You can remove or override this if you prefer explicit CLI env var.
@@ -76,15 +82,16 @@ class DataCollatorForSupervisedDataset:
 
     
 def load_jsonl_examples(path: Path) -> List[Example]:
-    items: List[Example] = []
-    with path.open("r", encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
-                continue
-            j = json.loads(line)
-            items.append(Example(instruction=j.get("instruction",""), input=j.get("input",""), output=j.get("output","")))
-    return items
+    """Load examples from JSONL file using package utilities."""
+    items = load_jsonl(path)
+    examples = []
+    for j in items:
+        examples.append(Example(
+            instruction=j.get("instruction", ""),
+            input=j.get("input", ""),
+            output=j.get("output", "")
+        ))
+    return examples
 
 class SFTDataset(Dataset):
     def __init__(self, examples: List[Example], tokenizer, cutoff_len: int):
