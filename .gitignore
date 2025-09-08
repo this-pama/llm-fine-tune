@@ -1,5 +1,21 @@
+# Environment and Python cache
 .env
-.venv
+.venv/
 __pycache__/
 *.pyc
+.mypy_cache/
+.pytest_cache/
+
+# Data files
+data/archive/*
+*.jsonl
+*.csv
+output_models/
+checkpoints/
+offload_folder/
+
+# System files
+.DS_Store
+
+# Model adapters
 /lora_adapter
