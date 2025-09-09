@@ -24,4 +24,7 @@ offload_folder/
 *.ipynb
 
 # Model adapters
-/lora_adapter
+/lora_adapter/tmp/
+*.pyc
+__pycache__/
+.pytest_cache/
