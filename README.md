@@ -5,24 +5,10 @@ A toolkit for preparing data, generating synthetic outputs, and fine-tuning lang
 ## Features
 
 - **Data Preparation**: Convert CSV, JSON, JSONL, TXT, and MD files into instruction-style training data
-- **Text Generation**: Generate synthetic outputs using Ollama or HuggingFace models with fallback support  
+- **Text Generation**: Generate synthetic outputs using Ollama or HuggingFace models with fallback support
 - **Review Pipeline**: Export datasets for human review and curation
 - **Fine-tuning**: Train LoRA adapters on large language models
 - **Testing & CI**: Comprehensive test suite and GitHub Actions workflows
-
-## What was removed
-
-This repository was recently cleaned up to remove obsolete files and improve maintainability. The following files were removed from HEAD (git history preserved):
-
-**System files:**
-- `.DS_Store` - macOS system file
-
-**Legacy documentation and scripts:**
-- `README_old.md` - Outdated documentation
-- `data_prep_old.py` - Legacy data preparation script (superseded by src/llm_fine_tune/data_prep.py)
-- `generate_with_olama_old.py` - Legacy generation script (superseded by src/llm_fine_tune/generate.py)
-
-**Note:** All files remain accessible in git history and can be recovered if needed. The cleanup only affects the current HEAD commit to reduce repository size and confusion.
 
 ## Quick Local Test
 
@@ -92,17 +78,17 @@ docker run --rm llm-fine-tune python generate_with_olama.py \
 
 The toolkit uses standardized metadata fields across all scripts:
 
-| Field | Description | Example |
-|-------|-------------|---------|
-| `source_type` | Document category | `"solution"`, `"experiment"`, `"action_plan"`, `"blog"` |
-| `source_filename` | Original file name | `"experiment_platform.csv"` |
-| `title` | Document title | `"Water Management Initiative"` |
-| `chunk_index` | Chunk number in document | `0`, `1`, `2` |
-| `chunk_chars` | Character count of chunk | `1847` |
-| `generated_by` | Generation method used | `"ollama"`, `"hf_fallback"` |
-| `generated_at` | Generation timestamp | `"2024-01-15 14:30:25"` |
-| `review_status` | Manual review status | `"approved"`, `"needs_edit"` |
-| `reviewer` | Who reviewed the output | `"john.doe@example.com"` |
+| Field             | Description              | Example                                                 |
+| ----------------- | ------------------------ | ------------------------------------------------------- |
+| `source_type`     | Document category        | `"solution"`, `"experiment"`, `"action_plan"`, `"blog"` |
+| `source_filename` | Original file name       | `"experiment_platform.csv"`                             |
+| `title`           | Document title           | `"Water Management Initiative"`                         |
+| `chunk_index`     | Chunk number in document | `0`, `1`, `2`                                           |
+| `chunk_chars`     | Character count of chunk | `1847`                                                  |
+| `generated_by`    | Generation method used   | `"ollama"`, `"hf_fallback"`                             |
+| `generated_at`    | Generation timestamp     | `"2024-01-15 14:30:25"`                                 |
+| `review_status`   | Manual review status     | `"approved"`, `"needs_edit"`                            |
+| `reviewer`        | Who reviewed the output  | `"john.doe@example.com"`                                |
 
 ## Full Production Workflow
 
@@ -173,31 +159,18 @@ python train_lora.py \
 ```
 ├── src/llm_fine_tune/       # Main package
 │   ├── utils.py             # Core utilities and text processing
-│   ├── data_prep.py         # Data preparation module  
+│   ├── data_prep.py         # Data preparation module
 │   └── generate.py          # Text generation with fallbacks
 ├── data/
 │   └── sample_sft_small.jsonl  # Sample dataset for testing
 ├── tests/                   # Test suite
 ├── data_prep.py            # Top-level script wrappers
 ├── generate_with_olama.py   # (import from package)
-├── export_for_review.py     
-├── train_sft.py            
-├── train_lora.py           
+├── export_for_review.py
+├── train_sft.py
+├── train_lora.py
 └── requirements.txt        # Pinned dependencies
 ```
-
-## Key Improvements
-
-This refactored version includes:
-
-- ✅ **Fixed chunk_text overlap bug** - Proper overlap preservation between text chunks
-- ✅ **Robust text extraction** - Handles multiple API response formats (Ollama, OpenAI, HuggingFace)
-- ✅ **HuggingFace fallback** - Works without Ollama for testing and CI
-- ✅ **Comprehensive tests** - Unit tests and integration tests with pytest
-- ✅ **GitHub Actions CI** - Automated linting, testing, and large file detection
-- ✅ **Containerization** - Docker support for reproducible environments
-- ✅ **Package structure** - Reusable modules with proper imports
-- ✅ **No large files** - All datasets moved to external storage with documentation
 
 ## Contributing
 
