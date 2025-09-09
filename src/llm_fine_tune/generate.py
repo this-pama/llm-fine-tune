@@ -1,15 +1,15 @@
 """
 Generation helpers: Ollama + HuggingFace fallback.
 
-The HF fallback previously hard-coded "gpt2" at call sites; this change ensures
-that callers only get gpt2 when they did not provide a model name. It also
-adapts generation to tokenizer.model_max_length and uses max_new_tokens to avoid
-"input length > max_length" warnings and empty outputs.
+This module provides a HuggingFace fallback that selects the fallback model from
+an explicit argument, the HF_FALLBACK_MODEL environment variable, or the
+conservative default "gpt2" only when nothing else is provided. It also uses
+tokenizer.model_max_length and max_new_tokens to avoid transformer warnings.
 """
 from __future__ import annotations
 import time
 import random
-import sys
+import os
 from typing import Optional
 
 try:
@@ -22,15 +22,12 @@ except Exception:
 def generate_with_hf_fallback(prompt: str, model_name: Optional[str] = None, max_new_tokens: int = 200) -> str:
     """Generate using HuggingFace as a fallback.
 
-    - model_name: Optional HF model identifier. If None, defaults to "gpt2".
-    - max_new_tokens: desired number of new tokens to generate (not total length).
-
-    The function adapts to tokenizer.model_max_length. If the prompt is longer
-    than the model supports together with the requested new tokens, the prompt
-    is truncated conservatively so generation can proceed rather than fail or
-    return an empty string.
+    Selection priority for model_name:
+      1) explicit model_name arg
+      2) HF_FALLBACK_MODEL env var
+      3) "gpt2"
     """
-    model_to_use = model_name or "gpt2"
+    model_to_use = model_name or os.getenv("HF_FALLBACK_MODEL") or "gpt2"
 
     if AutoTokenizer is None or AutoModelForCausalLM is None:
         return "Error: transformers package not available for HF fallback"
@@ -122,5 +119,3 @@ def generate_with_retry(prompt: str, model: str = "llama3.1",
                 return f"Error: {e}"
 
     return "Error: Generation failed and no fallback available"
-
-
