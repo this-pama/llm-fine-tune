@@ -10,8 +10,9 @@ import argparse
 import json
 import csv
 import sys
+import re
 from pathlib import Path
-from typing import List, Dict, Any, Union
+from typing import List, Dict, Any, Union, Optional
 
 # Import utilities from package
 from .utils import chunk_text, clean_text, strip_html, write_jsonl
@@ -255,34 +256,296 @@ def collect_docs_from_dir(input_dir: Path) -> List[Dict]:
     return docs
 
 
+# ---- CSV to JSONL specific functionality ----
+
+# Default instruction template for CSV data
+CSV_DEFAULT_INSTRUCTION = (
+    "Please analyze the following text and provide a comprehensive summary "
+    "highlighting the key points, main themes, and important details."
+)
+
+
+def extract_title_from_text(text: str, max_length: int = 100) -> str:
+    """
+    Extract a title from the beginning of text using conservative heuristics.
+    
+    Args:
+        text: The text to extract title from
+        max_length: Maximum length of extracted title
+        
+    Returns:
+        Extracted title or empty string if none found
+    """
+    if not text or not text.strip():
+        return ""
+    
+    # Clean the text first
+    text = text.strip()
+    
+    # Try to find a title in the first few lines
+    lines = text.split('\n')[:3]  # Look at first 3 lines
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+            
+        # Remove common markup/formatting
+        line = re.sub(r'^#+\s*', '', line)  # Remove markdown headers
+        line = re.sub(r'^-+\s*', '', line)  # Remove dashes
+        line = re.sub(r'^\*+\s*', '', line)  # Remove asterisks
+        line = strip_html(line)
+        line = line.strip()
+        
+        # Check if line looks like a title (reasonable length, not too short/long)
+        if 10 <= len(line) <= max_length and not line.endswith('.'):
+            # Avoid lines that look like URLs, emails, or code
+            if not re.search(r'(https?://|www\.|@|<|>|\{|\})', line):
+                return line
+    
+    # Fallback: use first sentence up to max_length
+    first_sentence = text.split('.')[0].strip()
+    if 10 <= len(first_sentence) <= max_length:
+        return first_sentence
+    
+    # Last resort: truncate beginning
+    if len(text) > max_length:
+        return text[:max_length].strip() + "..."
+    
+    return text.strip()
+
+
+def load_csv_rows(csv_path: Path) -> List[Dict[str, str]]:
+    """
+    Load CSV file and return list of dictionaries.
+    
+    Args:
+        csv_path: Path to CSV file
+        
+    Returns:
+        List of row dictionaries
+    """
+    rows = []
+    try:
+        with csv_path.open('r', encoding='utf-8', newline='') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                # Convert all values to strings and strip whitespace
+                cleaned_row = {}
+                for k, v in row.items():
+                    if k is not None:  # Skip None keys
+                        cleaned_row[k.strip()] = str(v).strip() if v is not None else ""
+                rows.append(cleaned_row)
+    except Exception as e:
+        # Try with different encoding
+        try:
+            with csv_path.open('r', encoding='latin-1', newline='') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    cleaned_row = {}
+                    for k, v in row.items():
+                        if k is not None:
+                            cleaned_row[k.strip()] = str(v).strip() if v is not None else ""
+                    rows.append(cleaned_row)
+        except Exception as e2:
+            raise SystemExit(f"Failed to read CSV {csv_path}: {e} (also tried latin-1: {e2})")
+    
+    return rows
+
+
+def csv_row_to_jsonl_entry(row: Dict[str, str], 
+                          text_column: str = "full_text",
+                          instruction: str = CSV_DEFAULT_INSTRUCTION) -> Optional[Dict[str, str]]:
+    """
+    Convert a CSV row to a JSONL entry for SFT training.
+    
+    Args:
+        row: Dictionary representing a CSV row
+        text_column: Name of column containing the main text
+        instruction: Instruction text to use
+        
+    Returns:
+        Dictionary with instruction/input/output fields, or None if no valid text
+    """
+    # Ignore 'section' column entirely as specified
+    if 'section' in row:
+        row = {k: v for k, v in row.items() if k != 'section'}
+    
+    # Extract main text from specified column
+    main_text = ""
+    if text_column in row and row[text_column]:
+        main_text = clean_text(strip_html(row[text_column]))
+    else:
+        # Fallback: look for common text column names
+        text_candidates = ['full_text', 'text', 'content', 'body', 'description']
+        for candidate in text_candidates:
+            if candidate in row and row[candidate]:
+                main_text = clean_text(strip_html(row[candidate]))
+                break
+    
+    if not main_text or len(main_text.strip()) < 10:
+        return None  # Skip rows without sufficient text
+    
+    # Extract or generate title
+    title = ""
+    if 'title' in row and row['title']:
+        title = clean_text(strip_html(row['title']))
+    else:
+        title = extract_title_from_text(main_text)
+    
+    # Look for explicit output/label fields
+    output = ""
+    output_candidates = ['output', 'label', 'target', 'summary', 'response', 'answer']
+    for candidate in output_candidates:
+        if candidate in row and row[candidate]:
+            output = clean_text(strip_html(row[candidate]))
+            break
+    
+    # Construct input field
+    input_parts = []
+    if title:
+        input_parts.append(f"Title: {title}")
+    input_parts.append(f"Text: {main_text}")
+    
+    input_text = "\n\n".join(input_parts)
+    
+    return {
+        "instruction": instruction,
+        "input": input_text,
+        "output": output  # May be empty if no explicit output field found
+    }
+
+
+def process_csv_to_jsonl(csv_path: Path, 
+                        output_path: Path,
+                        text_column: str = "full_text",
+                        instruction: Optional[str] = None,
+                        filter_empty_output: bool = False) -> int:
+    """
+    Process a CSV file and convert it to JSONL format for SFT training.
+    
+    Args:
+        csv_path: Path to input CSV file
+        output_path: Path to output JSONL file
+        text_column: Name of column containing main text
+        instruction: Custom instruction text (uses default if None)
+        filter_empty_output: If True, skip entries with empty output
+        
+    Returns:
+        Number of entries written
+    """
+    if instruction is None:
+        instruction = CSV_DEFAULT_INSTRUCTION
+    
+    print(f"Reading CSV from: {csv_path}")
+    rows = load_csv_rows(csv_path)
+    print(f"Found {len(rows)} rows in CSV")
+    
+    entries = []
+    skipped = 0
+    
+    for i, row in enumerate(rows):
+        entry = csv_row_to_jsonl_entry(row, text_column=text_column, instruction=instruction)
+        
+        if entry is None:
+            skipped += 1
+            continue
+            
+        if filter_empty_output and not entry["output"]:
+            skipped += 1
+            continue
+            
+        entries.append(entry)
+    
+    print(f"Converted {len(entries)} entries (skipped {skipped})")
+    
+    if entries:
+        write_jsonl(entries, output_path)
+        print(f"Wrote JSONL to: {output_path}")
+    else:
+        print("No valid entries to write")
+    
+    return len(entries)
+
+
 # ---- CLI entrypoint ----
 def main():
     """Main CLI entrypoint for data preparation."""
-    parser = argparse.ArgumentParser(description="Prepare instruction-style JSONL from document sources")
+    parser = argparse.ArgumentParser(
+        description="Data preparation: convert documents to instruction-style JSONL",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Mode 1 - Directory processing (original functionality):
+  python -m llm_fine_tune.data_prep --input_dir data_inputs --output sft_dataset.jsonl
+
+Mode 2 - CSV to JSONL conversion (new functionality):
+  python -m llm_fine_tune.data_prep --csv input.csv --output train.jsonl
+  python -m llm_fine_tune.data_prep --csv input.csv --output train.jsonl --text-column content --filter-empty
+        """
+    )
+    
+    # Original functionality arguments
     parser.add_argument("--input_dir", type=str, default="data_inputs",
-                        help="Directory containing source documents")
+                        help="Directory containing source documents (original mode)")
+    parser.add_argument("--max_chars", type=int, default=2000,
+                        help="Maximum characters per chunk (original mode)")
+    
+    # New CSV functionality arguments
+    parser.add_argument("--csv", type=str,
+                        help="Input CSV file path (CSV mode)")
+    parser.add_argument("--text-column", type=str, default="full_text",
+                        help="Name of column containing main text (CSV mode)")
+    parser.add_argument("--instruction", type=str,
+                        help="Custom instruction text (CSV mode)")
+    parser.add_argument("--filter-empty", action="store_true",
+                        help="Filter out entries with empty output field (CSV mode)")
+    
+    # Common arguments
     parser.add_argument("--output", type=str, default="sft_dataset.jsonl",
                         help="Output JSONL file")
-    parser.add_argument("--max_chars", type=int, default=2000,
-                        help="Maximum characters per chunk")
+    
     args = parser.parse_args()
 
-    input_dir = Path(args.input_dir)
-    if not input_dir.exists():
-        raise SystemExit(f"Input directory {input_dir} not found.")
+    if args.csv:
+        # CSV to JSONL mode
+        csv_path = Path(args.csv)
+        output_path = Path(args.output)
+        
+        if not csv_path.exists():
+            raise SystemExit(f"Input CSV file not found: {csv_path}")
+        
+        # Create output directory if it doesn't exist
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        try:
+            count = process_csv_to_jsonl(
+                csv_path=csv_path,
+                output_path=output_path,
+                text_column=args.text_column,
+                instruction=args.instruction,
+                filter_empty_output=args.filter_empty
+            )
+            print(f"Successfully processed {count} entries")
+        except Exception as e:
+            raise SystemExit(f"Error processing CSV: {e}")
+    else:
+        # Original directory processing mode
+        input_dir = Path(args.input_dir)
+        if not input_dir.exists():
+            raise SystemExit(f"Input directory {input_dir} not found.")
 
-    docs = collect_docs_from_dir(input_dir)
-    print(f"Found {len(docs)} documents.")
-    
-    examples = []
-    for d in docs:
-        exs = create_examples_from_doc(d["file"], d.get("title", ""), d["text"], max_chars=args.max_chars)
-        examples.extend(exs)
+        docs = collect_docs_from_dir(input_dir)
+        print(f"Found {len(docs)} documents.")
+        
+        examples = []
+        for d in docs:
+            exs = create_examples_from_doc(d["file"], d.get("title", ""), d["text"], max_chars=args.max_chars)
+            examples.extend(exs)
 
-    print(f"Created {len(examples)} examples (outputs empty by default).")
+        print(f"Created {len(examples)} examples (outputs empty by default).")
 
-    write_jsonl(examples, Path(args.output))
-    print(f"Wrote {len(examples)} examples to {args.output}")
+        write_jsonl(examples, Path(args.output))
+        print(f"Wrote {len(examples)} examples to {args.output}")
 
 
 if __name__ == "__main__":
