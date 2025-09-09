@@ -56,13 +56,18 @@ def chunk_text_sentence_aware(text: str, max_chars: int = 2000, overlap: int = 2
     
     chunks = []
     start = 0
+    max_iterations = len(text) // max(1, max_chars // 4)  # Prevent infinite loops
+    iteration = 0
     
-    while start < len(text):
+    while start < len(text) and iteration < max_iterations:
+        iteration += 1
         end = min(start + max_chars, len(text))
         
         if end >= len(text):
             # Last chunk - take everything remaining
-            chunks.append(text[start:].strip())
+            final_chunk = text[start:].strip()
+            if final_chunk:
+                chunks.append(final_chunk)
             break
         
         # Look for sentence boundary within the chunk
@@ -98,7 +103,10 @@ def chunk_text_sentence_aware(text: str, max_chars: int = 2000, overlap: int = 2
         
         # Calculate next start with overlap
         next_start = end - overlap if end < len(text) else end
-        start = max(next_start, start + 1)  # Ensure progress
+        # Ensure we make progress
+        if next_start <= start:
+            next_start = start + max(1, max_chars // 2)  # Force progress
+        start = next_start
     
     return chunks
 
