@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 
-def chunk_text(text: str, max_chars: int = 2000, overlap: int = 200) -> List[str]:
+def chunk_text(text: str, max_chars: int = 2000, overlap: int = 200, sentence_aware: bool = True) -> List[str]:
     """
     Split text into overlapping chunks with proper overlap preservation.
     
@@ -17,6 +17,7 @@ def chunk_text(text: str, max_chars: int = 2000, overlap: int = 200) -> List[str
         text: Input text to chunk
         max_chars: Maximum characters per chunk
         overlap: Number of characters to overlap between chunks
+        sentence_aware: If True, prefer sentence boundaries for splitting
         
     Returns:
         List of text chunks with proper overlap
@@ -32,6 +33,96 @@ def chunk_text(text: str, max_chars: int = 2000, overlap: int = 200) -> List[str
     if len(text) <= max_chars:
         return [text]
     
+    if sentence_aware:
+        return chunk_text_sentence_aware(text, max_chars, overlap)
+    else:
+        return chunk_text_character_based(text, max_chars, overlap)
+
+
+def chunk_text_sentence_aware(text: str, max_chars: int = 2000, overlap: int = 200) -> List[str]:
+    """
+    Split text into chunks preferring sentence boundaries to avoid mid-sentence splits.
+    
+    Args:
+        text: Input text to chunk
+        max_chars: Maximum characters per chunk
+        overlap: Number of characters to overlap between chunks
+        
+    Returns:
+        List of text chunks with sentence-aware splitting
+    """
+    # Sentence boundary patterns
+    sentence_endings = re.compile(r'[.!?]+\s+')
+    
+    chunks = []
+    start = 0
+    max_iterations = len(text) // max(1, max_chars // 4)  # Prevent infinite loops
+    iteration = 0
+    
+    while start < len(text) and iteration < max_iterations:
+        iteration += 1
+        end = min(start + max_chars, len(text))
+        
+        if end >= len(text):
+            # Last chunk - take everything remaining
+            final_chunk = text[start:].strip()
+            if final_chunk:
+                chunks.append(final_chunk)
+            break
+        
+        # Look for sentence boundary within the chunk
+        chunk_text = text[start:end]
+        
+        # Find sentence boundaries in the chunk text, searching backwards
+        boundaries = []
+        for match in sentence_endings.finditer(chunk_text):
+            boundaries.append(match.end())
+        
+        if boundaries:
+            # Use the last sentence boundary that leaves at least 25% of max_chars
+            min_chunk_size = max_chars // 4
+            for boundary in reversed(boundaries):
+                if boundary >= min_chunk_size:
+                    end = start + boundary
+                    break
+        else:
+            # No sentence boundary found, try paragraph break
+            nl_pos = text.rfind('\n\n', start, end)
+            if nl_pos > start + max_chars // 4:
+                end = nl_pos + 2  # Include the newlines
+            elif text.rfind('\n', start, end) > start + max_chars // 4:
+                # Single newline fallback
+                end = text.rfind('\n', start, end) + 1
+        
+        chunk = text[start:end].strip()
+        if chunk:
+            chunks.append(chunk)
+        
+        if end >= len(text):
+            break
+        
+        # Calculate next start with overlap
+        next_start = end - overlap if end < len(text) else end
+        # Ensure we make progress
+        if next_start <= start:
+            next_start = start + max(1, max_chars // 2)  # Force progress
+        start = next_start
+    
+    return chunks
+
+
+def chunk_text_character_based(text: str, max_chars: int = 2000, overlap: int = 200) -> List[str]:
+    """
+    Split text into overlapping chunks using character-based splitting (legacy behavior).
+    
+    Args:
+        text: Input text to chunk
+        max_chars: Maximum characters per chunk
+        overlap: Number of characters to overlap between chunks
+        
+    Returns:
+        List of text chunks with proper overlap
+    """
     chunks = []
     start = 0
     
