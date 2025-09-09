@@ -67,6 +67,8 @@ def generate_with_hf_fallback(prompt: str, model_name: Optional[str] = None, max
             do_sample=True,
             temperature=0.8,
             top_p=0.95,
+            repetition_penalty=1.1,
+            no_repeat_ngram_size=3,
             eos_token_id=getattr(tokenizer, "eos_token_id", None),
             pad_token_id=getattr(tokenizer, "pad_token_id", None),
         )
@@ -79,6 +81,22 @@ def generate_with_hf_fallback(prompt: str, model_name: Optional[str] = None, max
 
     except Exception as e:
         return f"Error in HF generation: {e}"
+
+
+def summarize_text(text: str, model_name: Optional[str] = None, max_new_tokens: int = 150) -> str:
+    """
+    Summarize text using HuggingFace with parameters optimized for summarization.
+    
+    Args:
+        text: Text to summarize
+        model_name: Optional HF model name
+        max_new_tokens: Maximum tokens to generate
+        
+    Returns:
+        Generated summary text
+    """
+    prompt = f"Summarize the following text concisely, focusing on key points:\n\n{text}\n\nSummary:"
+    return generate_with_hf_fallback(prompt, model_name=model_name, max_new_tokens=max_new_tokens)
 
 
 def generate_with_retry(prompt: str, model: str = "llama3.1",
